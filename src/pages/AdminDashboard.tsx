@@ -3,13 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { format, parseISO, isToday, isFuture } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { LogOut, Calendar, Check, X, User } from 'lucide-react';
+import { api } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const { user, logout, loading: authLoading } = useAuth();
+  
   const [appointments, setAppointments] = useState<any[]>([]);
   const [barbers, setBarbers] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [filterDate, setFilterDate] = useState<string>('all'); // 'all', 'today', 'tomorrow'
   const [filterStatus, setFilterStatus] = useState<string>('active'); // 'active', 'completed', 'cancelled'
 
@@ -19,176 +24,121 @@ export default function AdminDashboard() {
   const [passwordMsg, setPasswordMsg] = useState('');
 
   useEffect(() => {
-    checkAuthAndLoad();
-  }, []);
+    if (!authLoading && !user) {
+      navigate('/admin/login');
+    } else if (user) {
+      loadData();
+    }
+  }, [user, authLoading, navigate]);
 
-  const checkAuthAndLoad = async () => {
+  const loadData = async () => {
     try {
-      const res = await fetch('/api/admin/me');
-      if (!res.ok) {
-        navigate('/admin/login');
-        return;
-      }
-      
       const [aptRes, barRes, srvRes] = await Promise.all([
-        fetch('/api/admin/appointments'),
-        fetch('/api/barbers'),
-        fetch('/api/services')
+        api.get('/api/admin/appointments'),
+        api.get('/api/barbers'),
+        api.get('/api/services')
       ]);
-
-      setAppointments(await aptRes.json());
-      setBarbers(await barRes.json());
-      setServices(await srvRes.json());
+      setAppointments(aptRes);
+      setBarbers(barRes);
+      setServices(srvRes);
     } catch (e) {
       console.error(e);
-      navigate('/admin/login');
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    await fetch('/api/admin/logout', { method: 'POST' });
+    await logout();
     navigate('/admin/login');
   };
 
   const updateStatus = async (id: number, status: string) => {
-    const res = await fetch(`/api/admin/appointments/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status })
-    });
-    if (res.ok) {
+    try {
+      await api.patch(`/api/admin/appointments/${id}`, { status });
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao atualizar status');
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
+  const changePassword = async (e: any) => {
     e.preventDefault();
-    setPasswordMsg('');
     try {
-      const res = await fetch('/api/admin/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPassword, newPassword })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao atualizar');
-      setPasswordMsg(data.message);
+      const res = await api.post('/api/admin/change-password', { oldPassword, newPassword });
+      setPasswordMsg(res.message);
       setOldPassword('');
       setNewPassword('');
-    } catch (e: any) {
-      setPasswordMsg(e.message);
+    } catch (err: any) {
+      setPasswordMsg(err.error || 'Erro ao alterar senha');
     }
   };
 
-  if (loading) {
-    return <div className="min-h-screen bg-[var(--color-brand-base)] flex items-center justify-center font-mono text-[var(--color-brand-amber)]">CARREGANDO SISTEMA...</div>;
+  if (authLoading || loading) return <div className="min-h-screen bg-[var(--color-brand-base)] text-[var(--color-brand-text)] flex items-center justify-center font-mono text-sm">CARREGANDO...</div>;
+
+  const today = new Date();
+  
+  let filteredAppointments = appointments;
+
+  if (filterDate === 'today') {
+    filteredAppointments = filteredAppointments.filter(a => isToday(parseISO(a.startTime)));
+  } else if (filterDate === 'tomorrow') {
+    filteredAppointments = filteredAppointments.filter(a => {
+      const aptDate = parseISO(a.startTime);
+      return aptDate.getDate() === today.getDate() + 1 && aptDate.getMonth() === today.getMonth();
+    });
   }
 
-  // Derived stats
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
-  
-  const filteredAppointments = appointments.filter(a => {
-    // Status filter
-    if (filterStatus === 'active' && a.status !== 'confirmed') return false;
-    if (filterStatus === 'completed' && a.status !== 'completed') return false;
-    if (filterStatus === 'cancelled' && !['cancelled', 'no_show'].includes(a.status)) return false;
+  if (filterStatus === 'active') {
+    filteredAppointments = filteredAppointments.filter(a => ['confirmed'].includes(a.status));
+  } else if (filterStatus === 'completed') {
+    filteredAppointments = filteredAppointments.filter(a => a.status === 'completed');
+  } else if (filterStatus === 'cancelled') {
+    filteredAppointments = filteredAppointments.filter(a => ['cancelled', 'no_show'].includes(a.status));
+  }
 
-    // Date filter
-    const aptDateStr = a.startTime.split('T')[0];
-    if (filterDate === 'today' && aptDateStr !== todayStr) return false;
-    
-    const tmr = new Date();
-    tmr.setDate(tmr.getDate() + 1);
-    const tmrStr = format(tmr, 'yyyy-MM-dd');
-    if (filterDate === 'tomorrow' && aptDateStr !== tmrStr) return false;
-
-    return true;
-  });
-
-  const totalRevenue = appointments
-    .filter(a => a.status === 'completed')
-    .reduce((sum, a) => sum + a.totalPrice, 0);
+  const todayRevenue = appointments
+    .filter(a => isToday(parseISO(a.startTime)) && a.status === 'completed')
+    .reduce((acc, curr) => acc + curr.totalPrice, 0);
 
   const pendingRevenue = appointments
-    .filter(a => a.status === 'confirmed')
-    .reduce((sum, a) => sum + a.totalPrice, 0);
-
-  const totalAppointments = appointments.length;
-  const completedAppointments = appointments.filter(a => a.status === 'completed').length;
+    .filter(a => isToday(parseISO(a.startTime)) && a.status === 'confirmed')
+    .reduce((acc, curr) => acc + curr.totalPrice, 0);
 
   return (
     <div className="min-h-screen bg-[var(--color-brand-base)] text-[var(--color-brand-text)] font-sans">
-      
-      {/* Topbar */}
-      <header className="h-16 border-b border-[var(--color-brand-border)] bg-[var(--color-brand-surface)] flex items-center justify-between px-6 sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <img src="/logo.jpg?v=3" alt="Coitz Logo" className="h-10 w-auto object-contain mix-blend-screen" />
-          <span className="font-display text-2xl uppercase tracking-widest text-[var(--color-brand-text)] opacity-50 hidden sm:inline">ADMIN</span>
-        </div>
-        <div className="flex items-center gap-6">
-          <button onClick={() => setShowPasswordModal(true)} className="flex items-center gap-2 font-mono text-xs text-[var(--color-brand-muted)] hover:text-[var(--color-brand-amber)] transition-colors">
-            MUDAR SENHA
-          </button>
-          <button onClick={handleLogout} className="flex items-center gap-2 font-mono text-xs text-[var(--color-brand-muted)] hover:text-red-400 transition-colors">
-            <LogOut size={16} /> SAIR
-          </button>
+      {/* Header */}
+      <header className="border-b border-[var(--color-brand-border)] bg-[var(--color-brand-surface)] sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-[var(--color-brand-amber)] flex items-center justify-center">
+              <span className="font-display text-2xl text-[var(--color-brand-base)]">C</span>
+            </div>
+            <span className="font-display text-xl tracking-wider">PAINEL</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <span className="font-mono text-xs uppercase hidden sm:inline-block">Admin: {user?.name}</span>
+            <button onClick={() => setShowPasswordModal(true)} className="font-mono text-xs text-[var(--color-brand-muted)] hover:text-[var(--color-brand-text)] uppercase transition-colors">
+              Mudar Senha
+            </button>
+            <button onClick={handleLogout} className="flex items-center gap-2 font-mono text-xs text-[var(--color-brand-amber)] hover:text-[var(--color-brand-text)] transition-colors">
+              <LogOut size={16} /> SAIR
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 grid lg:grid-cols-12 gap-8">
-        
-         {/* Sidebar / Stats */}
-        <aside className="lg:col-span-3 space-y-6">
-
-          {showPasswordModal && (
-            <div className="bg-[var(--color-brand-surface)] border border-[var(--color-brand-border)] p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-mono text-xs text-[var(--color-brand-amber)] uppercase">Mudar Senha</h3>
-                <button onClick={() => setShowPasswordModal(false)} className="text-[var(--color-brand-muted)] hover:text-[var(--color-brand-text)]">
-                  <X size={16} />
-                </button>
-              </div>
-              <form onSubmit={handleChangePassword} className="space-y-4">
-                <div>
-                  <input
-                    type="password"
-                    placeholder="Senha Atual"
-                    value={oldPassword}
-                    onChange={(e) => setOldPassword(e.target.value)}
-                    required
-                    className="w-full bg-[var(--color-brand-base)] border border-[var(--color-brand-border)] px-3 py-2 font-mono text-sm text-[var(--color-brand-text)] focus:outline-none focus:border-[var(--color-brand-amber)] placeholder:text-[var(--color-brand-muted)]"
-                  />
-                </div>
-                <div>
-                  <input
-                    type="password"
-                    placeholder="Nova Senha"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    className="w-full bg-[var(--color-brand-base)] border border-[var(--color-brand-border)] px-3 py-2 font-mono text-sm text-[var(--color-brand-text)] focus:outline-none focus:border-[var(--color-brand-amber)] placeholder:text-[var(--color-brand-muted)]"
-                  />
-                </div>
-                {passwordMsg && <p className="font-mono text-xs text-[var(--color-brand-amber)]">{passwordMsg}</p>}
-                <button type="submit" className="w-full bg-[var(--color-brand-amber)] hover:bg-[var(--color-brand-amber)]/90 text-[var(--color-brand-base)] px-4 py-2 font-mono text-sm uppercase transition-colors">
-                  Salvar
-                </button>
-              </form>
-            </div>
-          )}
-
+      {/* Main Grid */}
+      <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-12 gap-12">
+        {/* Sidebar */}
+        <aside className="lg:col-span-3 space-y-8">
           <div className="bg-[var(--color-brand-surface)] border border-[var(--color-brand-border)] p-6">
-             <h3 className="font-mono text-xs text-[var(--color-brand-muted)] uppercase mb-4">Visão Geral</h3>
-             <div className="space-y-4">
+             <h3 className="font-mono text-xs text-[var(--color-brand-muted)] uppercase mb-4">Resumo de Hoje</h3>
+             <div className="space-y-6">
                <div>
-                 <p className="font-sans text-sm text-[var(--color-brand-muted)]">Atendimentos Concluídos</p>
-                 <p className="font-display text-4xl">{completedAppointments} <span className="text-xl text-[var(--color-brand-muted)]">/ {totalAppointments}</span></p>
-               </div>
-               <div>
-                 <p className="font-sans text-sm text-[var(--color-brand-muted)]">Faturamento Realizado</p>
-                 <p className="font-display text-4xl text-[var(--color-brand-lime)]">R$ {totalRevenue}</p>
+                 <p className="font-sans text-sm text-[var(--color-brand-muted)]">Faturamento (Concluído)</p>
+                 <p className="font-display text-4xl mt-1">R$ {todayRevenue}</p>
                </div>
                <div>
                  <p className="font-sans text-sm text-[var(--color-brand-muted)]">Faturamento Pendente</p>
@@ -295,6 +245,39 @@ export default function AdminDashboard() {
           </div>
         </main>
       </div>
+
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[var(--color-brand-surface)] border border-[var(--color-brand-border)] p-8 max-w-sm w-full">
+            <h3 className="font-display text-2xl uppercase mb-6">Mudar Senha</h3>
+            <form onSubmit={changePassword} className="space-y-4">
+              {passwordMsg && <p className="font-mono text-xs text-[var(--color-brand-amber)]">{passwordMsg}</p>}
+              <div>
+                <label className="block font-mono text-xs text-[var(--color-brand-muted)] mb-1">Senha Atual</label>
+                <input 
+                  type="password" 
+                  value={oldPassword} onChange={e => setOldPassword(e.target.value)} 
+                  className="w-full bg-transparent border border-[var(--color-brand-border)] p-2 text-sm focus:outline-none focus:border-[var(--color-brand-amber)]" 
+                  required 
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-xs text-[var(--color-brand-muted)] mb-1">Nova Senha</label>
+                <input 
+                  type="password" 
+                  value={newPassword} onChange={e => setNewPassword(e.target.value)} 
+                  className="w-full bg-transparent border border-[var(--color-brand-border)] p-2 text-sm focus:outline-none focus:border-[var(--color-brand-amber)]" 
+                  required 
+                />
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setShowPasswordModal(false)} className="flex-1 border border-[var(--color-brand-border)] py-2 font-mono text-xs uppercase hover:text-[var(--color-brand-amber)] transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 bg-[var(--color-brand-amber)] text-[var(--color-brand-base)] font-mono text-xs uppercase py-2 hover:bg-[var(--color-brand-amber-hover)] transition-colors">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

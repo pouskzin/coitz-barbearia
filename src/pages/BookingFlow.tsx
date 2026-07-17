@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Check, Calendar as CalIcon } from 'lucide-react';
 import { format, addDays, startOfToday, isSameDay, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { api } from '../services/api';
 
 export default function BookingFlow() {
   const navigate = useNavigate();
@@ -27,8 +28,8 @@ export default function BookingFlow() {
   const [loadingSlots, setLoadingSlots] = useState(false);
 
   useEffect(() => {
-    fetch('/api/services').then(r => r.json()).then(setServices);
-    fetch('/api/barbers').then(r => r.json()).then(setBarbers);
+    api.get('/api/services').then(setServices);
+    api.get('/api/barbers').then(setBarbers);
   }, []);
 
   useEffect(() => {
@@ -45,8 +46,8 @@ export default function BookingFlow() {
       : `/api/availability?date=${dateStr}`;
     
     try {
-      const res = await fetch(url);
-      const data = await res.json();
+      const data = await api.get(url);
+      
       setSlots(data.availableSlots || []);
     } catch (e) {
       console.error(e);
@@ -73,19 +74,10 @@ export default function BookingFlow() {
         startTime: selectedSlot.time,
       };
       
-      const res = await fetch('/api/appointments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      
-      if (res.ok) {
-        setStep(6); // Success screen
-      } else {
-        alert("Erro ao agendar. Tente novamente.");
-      }
+      await api.post('/api/appointments', payload);
+      setStep(6); // Success screen
     } catch (e) {
-      alert("Erro de conexão.");
+      alert("Erro de conexão ou ao agendar.");
     } finally {
       setLoading(false);
     }

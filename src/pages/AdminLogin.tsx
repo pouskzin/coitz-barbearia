@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');
@@ -7,27 +9,18 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { checkAuth } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     try {
-      const res = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-      if (res.ok) {
-        navigate('/admin');
-      } else {
-        const data = await res.json();
-        setError(data.error || 'Erro ao fazer login');
-      }
-    } catch (err) {
-      setError('Erro de conexão');
+      await api.post('/api/admin/login', { email, password });
+      await checkAuth();
+      navigate('/admin');
+    } catch (err: any) {
+      setError(err.error || 'Erro de conexão');
     } finally {
       setLoading(false);
     }
@@ -41,14 +34,12 @@ export default function AdminLogin() {
           <h1 className="font-display text-4xl uppercase text-[var(--color-brand-text)]">ADMIN</h1>
           <p className="font-mono text-[var(--color-brand-muted)] text-sm mt-2">SISTEMA RESTRITO</p>
         </div>
-
         <form onSubmit={handleLogin} className="space-y-6">
           {error && (
             <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 font-mono text-sm text-center">
               {error}
             </div>
           )}
-
           <div>
             <label className="block font-mono text-xs text-[var(--color-brand-muted)] mb-2 uppercase">E-mail</label>
             <input 
@@ -59,7 +50,6 @@ export default function AdminLogin() {
               required
             />
           </div>
-
           <div>
             <label className="block font-mono text-xs text-[var(--color-brand-muted)] mb-2 uppercase">Senha</label>
             <input 
@@ -70,7 +60,6 @@ export default function AdminLogin() {
               required
             />
           </div>
-
           <button
             type="submit"
             disabled={loading}
