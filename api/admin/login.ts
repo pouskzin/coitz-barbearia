@@ -5,8 +5,10 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-
-const JWT_SECRET = process.env.JWT_SECRET || "super-secret-default-key-change-in-prod";
+import { JWT_SECRET } from "../_utils/auth.js";
+import { setCorsHeaders, validateCsrf } from "../_utils/security.js";
+import { checkLoginRateLimit } from "../_utils/ratelimit.js";
+import { createRefreshToken, buildRefreshCookie } from "../_utils/tokens.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -14,10 +16,20 @@ const loginSchema = z.object({
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (setCorsHeaders(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: "Method not allowed" });
+  if (!validateCsrf(req, res)) return;
   
   try {
     const { email, password } = loginSchema.parse(req.body);
+
+    // Rate limiting: 5 attempts per 15 minutes per IP+email
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || 'unknown';
+    const rateCheck = await checkLoginRateLimit(clientIp, email);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({ error: "Muitas tentativas de login. Tente novamente em 15 minutos." });
+    }
+
     const users = await db.select().from(adminUsers).where(eq(adminUsers.email, email));
     if (users.length === 0) return res.status(401).json({ error: "Invalid credentials" });
     
@@ -25,13 +37,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) return res.status(401).json({ error: "Invalid credentials" });
     
-    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '1d' });
+    // Access token: short-lived (15 minutes)
+    const accessToken = jwt.sign(
+      { id: user.id, email: user.email, name: user.name, role: 'admin' },
+      JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    // Refresh token: long-lived (7 days), stored as hash in DB
+    const rawRefreshToken = await createRefreshToken(user.id);
     
-    res.setHeader('Set-Cookie', `admin_token=${token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=86400`);
+    // Set both cookies
+    res.setHeader('Set-Cookie', [
+      `admin_token=${accessToken}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=900`,
+      buildRefreshCookie(rawRefreshToken),
+    ]);
     res.json({ message: "Logged in successfully" });
   } catch (error) {
-    console.error(error);
     if (error instanceof z.ZodError) return res.status(400).json({ error: "Validation error", issues: error.issues });
+    console.error("[LOGIN] Unexpected error");
     res.status(500).json({ error: "Server error" });
   }
 }

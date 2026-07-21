@@ -38,5 +38,16 @@ export const appointments = pgTable('appointments', {
   endTime: text('end_time').notNull(),
   totalPrice: integer('total_price').notNull(),
   notes: text('notes'),
+  notificationStatus: text('notification_status', { enum: ['pending', 'sent', 'failed'] }).default('pending'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const refreshTokens = pgTable('refresh_tokens', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => adminUsers.id),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at'),
+});
+
