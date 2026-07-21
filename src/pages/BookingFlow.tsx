@@ -8,21 +8,28 @@ import { api } from '../services/api';
 
 export default function BookingFlow() {
   const navigate = useNavigate();
-  
+
+  const formatCurrency = (priceInCents: number) => {
+    return (priceInCents / 100).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    });
+  };
+
   const [step, setStep] = useState(1);
   const [services, setServices] = useState<any[]>([]);
   const [barbers, setBarbers] = useState<any[]>([]);
   const [slots, setSlots] = useState<any[]>([]);
-  
+
   // Selections
   const [selectedService, setSelectedService] = useState<any>(null);
   const [selectedBarber, setSelectedBarber] = useState<any>(null); // null means any
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedSlot, setSelectedSlot] = useState<any>(null);
-  
+
   // Client Info
   const [clientInfo, setClientInfo] = useState({ name: '', phone: '', email: '' });
-  
+
   // Loading states
   const [loading, setLoading] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -41,13 +48,13 @@ export default function BookingFlow() {
   const loadSlots = async (date: Date, barberId?: number) => {
     setLoadingSlots(true);
     const dateStr = format(date, 'yyyy-MM-dd');
-    const url = barberId 
+    const url = barberId
       ? `/api/availability?date=${dateStr}&barberId=${barberId}`
       : `/api/availability?date=${dateStr}`;
-    
+
     try {
       const data = await api.get(url);
-      
+
       setSlots(data.availableSlots || []);
     } catch (e) {
       console.error(e);
@@ -73,7 +80,7 @@ export default function BookingFlow() {
         serviceId: selectedService.id,
         startTime: selectedSlot.time,
       };
-      
+
       await api.post('/api/appointments', payload);
       setStep(6); // Success screen
     } catch (e) {
@@ -84,7 +91,7 @@ export default function BookingFlow() {
   };
 
   const renderStep = () => {
-    switch(step) {
+    switch (step) {
       case 1:
         return (
           <div className="space-y-4">
@@ -98,7 +105,7 @@ export default function BookingFlow() {
                   <h3 className="font-display text-2xl uppercase group-hover:text-[var(--color-brand-amber)]">{s.name}</h3>
                   <p className="font-sans text-[var(--color-brand-muted)]">{s.description}</p>
                 </div>
-                <div className="font-display text-3xl">R$ {s.price}</div>
+                <div className="font-display text-3xl">{formatCurrency(s.price)}</div>
               </button>
             ))}
           </div>
@@ -127,7 +134,7 @@ export default function BookingFlow() {
         );
       case 3:
         // Build next 7 days for quick selection
-        const days = Array.from({length: 14}).map((_, i) => addDays(startOfToday(), i)).filter(d => d.getDay() !== 0); // No sundays
+        const days = Array.from({ length: 14 }).map((_, i) => addDays(startOfToday(), i)).filter(d => d.getDay() !== 0); // No sundays
         return (
           <div className="space-y-8">
             {/* Horizontal Date Picker */}
@@ -138,11 +145,10 @@ export default function BookingFlow() {
                   <button
                     key={d.toISOString()}
                     onClick={() => setSelectedDate(d)}
-                    className={`snap-start min-w-[80px] p-4 border flex flex-col items-center justify-center gap-1 transition-colors ${
-                      isSelected 
-                        ? 'bg-[var(--color-brand-amber)] border-[var(--color-brand-amber)] text-[var(--color-brand-base)]' 
-                        : 'bg-[var(--color-brand-surface)] border-[var(--color-brand-border)] text-[var(--color-brand-text)] hover:border-[var(--color-brand-amber)]'
-                    }`}
+                    className={`snap-start min-w-[80px] p-4 border flex flex-col items-center justify-center gap-1 transition-colors ${isSelected
+                      ? 'bg-[var(--color-brand-amber)] border-[var(--color-brand-amber)] text-[var(--color-brand-base)]'
+                      : 'bg-[var(--color-brand-surface)] border-[var(--color-brand-border)] text-[var(--color-brand-text)] hover:border-[var(--color-brand-amber)]'
+                      }`}
                   >
                     <span className="font-mono text-xs uppercase">{format(d, 'EEE', { locale: ptBR })}</span>
                     <span className="font-display text-2xl">{format(d, 'dd')}</span>
@@ -162,7 +168,7 @@ export default function BookingFlow() {
                   // for simplicity, just show times. If multiple barbers have the same time, we'll pick the first one selected.
                   const timeLabel = format(parseISO(slot.time), 'HH:mm');
                   const barberLabel = barbers.find(b => b.id === slot.barberId)?.name.split(' ')[0];
-                  
+
                   return (
                     <button
                       key={`${slot.time}-${slot.barberId}`}
@@ -187,30 +193,30 @@ export default function BookingFlow() {
           <div className="space-y-6">
             <div>
               <label className="block font-mono text-xs text-[var(--color-brand-muted)] mb-2 uppercase">Nome Completo</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={clientInfo.name}
-                onChange={e => setClientInfo(prev => ({...prev, name: e.target.value}))}
+                onChange={e => setClientInfo(prev => ({ ...prev, name: e.target.value }))}
                 className="w-full bg-[var(--color-brand-base)] border border-[var(--color-brand-border)] p-4 font-sans text-lg focus:outline-none focus:border-[var(--color-brand-amber)] transition-colors"
                 placeholder="Ex: João Silva"
               />
             </div>
             <div>
               <label className="block font-mono text-xs text-[var(--color-brand-muted)] mb-2 uppercase">WhatsApp</label>
-              <input 
-                type="tel" 
+              <input
+                type="tel"
                 value={clientInfo.phone}
-                onChange={e => setClientInfo(prev => ({...prev, phone: e.target.value}))}
+                onChange={e => setClientInfo(prev => ({ ...prev, phone: e.target.value }))}
                 className="w-full bg-[var(--color-brand-base)] border border-[var(--color-brand-border)] p-4 font-sans text-lg focus:outline-none focus:border-[var(--color-brand-amber)] transition-colors"
                 placeholder="(43) 90000-0000"
               />
             </div>
             <div>
               <label className="block font-mono text-xs text-[var(--color-brand-muted)] mb-2 uppercase">E-mail (Opcional)</label>
-              <input 
-                type="email" 
+              <input
+                type="email"
                 value={clientInfo.email}
-                onChange={e => setClientInfo(prev => ({...prev, email: e.target.value}))}
+                onChange={e => setClientInfo(prev => ({ ...prev, email: e.target.value }))}
                 className="w-full bg-[var(--color-brand-base)] border border-[var(--color-brand-border)] p-4 font-sans text-lg focus:outline-none focus:border-[var(--color-brand-amber)] transition-colors"
                 placeholder="joao@email.com"
               />
@@ -230,17 +236,17 @@ export default function BookingFlow() {
           <div className="space-y-6">
             <div className="bg-[var(--color-brand-surface)] border border-[var(--color-brand-border)] p-6 space-y-4">
               <h3 className="font-mono text-xs text-[var(--color-brand-lime)] uppercase tracking-widest mb-4">Resumo do Agendamento</h3>
-              
+
               <div className="flex justify-between items-end border-b border-[var(--color-brand-border)] pb-2">
                 <span className="font-sans text-[var(--color-brand-muted)]">Serviço</span>
                 <span className="font-display text-xl">{selectedService?.name}</span>
               </div>
-              
+
               <div className="flex justify-between items-end border-b border-[var(--color-brand-border)] pb-2">
                 <span className="font-sans text-[var(--color-brand-muted)]">Profissional</span>
                 <span className="font-display text-xl">{bLabel}</span>
               </div>
-              
+
               <div className="flex justify-between items-end border-b border-[var(--color-brand-border)] pb-2">
                 <span className="font-sans text-[var(--color-brand-muted)]">Data e Hora</span>
                 <span className="font-display text-xl text-[var(--color-brand-amber)]">
@@ -250,7 +256,7 @@ export default function BookingFlow() {
 
               <div className="flex justify-between items-end pt-2">
                 <span className="font-sans text-[var(--color-brand-muted)]">Total a pagar no local</span>
-                <span className="font-display text-3xl">R$ {selectedService?.price},00</span>
+                <span className="font-display text-3xl">{formatCurrency(selectedService?.price || 0)}</span>
               </div>
             </div>
 
@@ -279,7 +285,7 @@ export default function BookingFlow() {
             <p className="font-sans text-[var(--color-brand-muted)] max-w-sm">
               Seu horário está garantido em nosso sistema! Clique no botão abaixo para nos enviar uma mensagem e confirmar seu agendamento no WhatsApp.
             </p>
-            
+
             <div className="flex flex-col gap-4 mt-8 w-full max-w-md">
               <button
                 onClick={() => {
@@ -287,14 +293,14 @@ export default function BookingFlow() {
                   const msg = `Olá! Acabei de fazer um agendamento pelo site.\n\n👤 Nome: ${clientInfo.name}\n✂️ Serviço: ${selectedService?.name}\n💈 Profissional: ${selectedBarber?.name?.split(' ')[0]}\n📅 Data/Hora: ${dataStr}`;
                   const encodedMsg = encodeURIComponent(msg);
                   // Substitua pelo número real da barbearia
-                  const phone = "554391970920"; 
+                  const phone = "554391970920";
                   window.open(`https://wa.me/${phone}?text=${encodedMsg}`, '_blank');
                 }}
                 className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-display text-xl px-8 py-4 uppercase tracking-wide transition-colors flex items-center justify-center gap-2"
               >
                 CONFIRMAR NO WHATSAPP
               </button>
-              
+
               <button
                 onClick={() => navigate('/')}
                 className="w-full bg-[var(--color-brand-surface)] border border-[var(--color-brand-border)] hover:border-[var(--color-brand-amber)] text-[var(--color-brand-text)] font-display text-lg px-8 py-4 uppercase tracking-wide transition-colors"
@@ -308,7 +314,7 @@ export default function BookingFlow() {
   };
 
   const getStepTitle = () => {
-    switch(step) {
+    switch (step) {
       case 1: return "ESCOLHA O SERVIÇO";
       case 2: return "ESCOLHA O PROFISSIONAL";
       case 3: return "DATA E HORÁRIO";
@@ -338,7 +344,7 @@ export default function BookingFlow() {
             <h1 className="font-display text-4xl sm:text-5xl uppercase tracking-tight">{getStepTitle()}</h1>
           </div>
         )}
-        
+
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
