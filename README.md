@@ -1,6 +1,7 @@
 # Coitz Barbearia - Plataforma de Agendamentos SaaS 💈
 
 Um sistema de agendamentos moderno, escalável e de alta performance construído para barbearias. Arquitetado focado em resiliência **Serverless**, segurança defensiva e excelente experiência do usuário.
+Link do Site online: https://coitz-barbearia.vercel.app
 
 ## 🚀 Arquitetura e Tech Stack
 
