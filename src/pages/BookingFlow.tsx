@@ -289,8 +289,8 @@ export default function BookingFlow() {
             <div className="flex flex-col gap-4 mt-8 w-full max-w-md">
               <button
                 onClick={() => {
-                  const dataStr = format(selectedSlot?.dateTime || new Date(), "dd/MM 'às' HH:mm");
-                  const msg = `Olá! Acabei de fazer um agendamento pelo site.\n\n👤 Nome: ${clientInfo.name}\n✂️ Serviço: ${selectedService?.name}\n💈 Profissional: ${selectedBarber?.name?.split(' ')[0]}\n📅 Data/Hora: ${dataStr}`;
+                  const dataStr = selectedSlot ? format(parseISO(selectedSlot.time), "dd/MM 'às' HH:mm") : "";
+                  const msg = `Olá! Acabei de fazer um agendamento pelo site.\n\n◈ Nome: ${clientInfo.name}\n◈ Serviço: ${selectedService?.name}\n◈ Profissional: ${selectedBarber?.name?.split(' ')[0]}\n◈ Data/Hora: ${dataStr}`;
                   const encodedMsg = encodeURIComponent(msg);
                   // Substitua pelo número real da barbearia
                   const phone = "554391970920";
