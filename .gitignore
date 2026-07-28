@@ -9,3 +9,8 @@ coverage/
 !.env.example
 sqlite.db
 cookies.txt
+.env
+.env.*
+!.env.example
+sqlite.db
+cookies.txt
